@@ -5,7 +5,7 @@ use std::{
 
 use crate::{grep_error::GrepError, regex::Regex};
 
-/// Representa un grep con un archivo y un vector de expresiones regulares
+/// Representa un grep simple implementado en Rust.
 #[derive(Debug)]
 pub struct GrepRustico {
     file: File,
@@ -24,7 +24,7 @@ impl GrepRustico {
     /// Devuelve un `GrepRustico` inicializado si los argumentos son válidos y no hay errores.
     ///
     /// Si hay un error en los argumentos o al abrir el archivo, devuelve un error de tipo `GrepError`.
-    pub fn leer_comandos(args: Vec<String>) -> Result<GrepRustico, GrepError> {
+    pub fn read_commands(args: Vec<String>) -> Result<GrepRustico, GrepError> {
         if args.len() != 3 {
             return Err(GrepError::Err);
         }
@@ -32,7 +32,7 @@ impl GrepRustico {
         let regex = &args[1];
         let nombre_archivo = &args[2];
 
-        let file = GrepRustico::abrir_archivo(nombre_archivo)?;
+        let file = GrepRustico::open_file(nombre_archivo)?;
         let regex_vec = Regex::crear_regex(regex)?;
 
         Ok(GrepRustico { file, regex_vec })
@@ -47,12 +47,12 @@ impl GrepRustico {
     /// Si hay un error al leer el archivo o al ejecutar el grep, devuelve un error de tipo `GrepError`.
     pub fn run(&mut self) -> Result<Vec<String>, GrepError> {
         let mut matches = Vec::new();
-        let cadena: Vec<String> = match self.leer_palabras() {
+        let cadena: Vec<String> = match self.read_words() {
             Ok(cadena) => cadena,
             Err(_err) => return Err(GrepError::ErrArchivo),
         };
 
-        match self.filtrar_cadena_y_grep(&cadena) {
+        match self.filetr_and_run(&cadena) {
             Ok(results) => {
                 for result in results {
                     matches.push(result);
@@ -61,7 +61,7 @@ impl GrepRustico {
             Err(_err) => return Err(GrepError::ErrArchivo),
         };
 
-        self.imprimir_matches(&matches);
+        self.print_matches(&matches);
         Ok(matches)
     }
     /// Imprime las líneas que coinciden con las expresiones regulares.
@@ -69,7 +69,7 @@ impl GrepRustico {
     /// # Arguments
     ///
     /// * `matches` - Un vector de cadenas que representan las líneas que coinciden con las expresiones regulares.
-    fn imprimir_matches(&self, matches: &Vec<String>) {
+    fn print_matches(&self, matches: &Vec<String>) {
         for linea in matches {
             println!("{}", linea);
         }
@@ -86,7 +86,7 @@ impl GrepRustico {
     /// Devuelve un objeto `File` si el archivo se abre con éxito.
     ///
     /// Si hay un error al abrir el archivo, devuelve un error de tipo `GrepError`.
-    fn abrir_archivo(nombre_archivo: &str) -> Result<File, GrepError> {
+    fn open_file(nombre_archivo: &str) -> Result<File, GrepError> {
         match File::open(nombre_archivo) {
             Ok(file) => Ok(file),
             Err(_) => Err(GrepError::ErrArchivo),
@@ -100,10 +100,10 @@ impl GrepRustico {
     /// Devuelve un vector de cadenas que representan todas las palabras del archivo.
     ///
     /// Si hay un error al leer el archivo, devuelve un error de tipo `GrepError`.
-    fn leer_palabras(&self) -> Result<Vec<String>, GrepError> {
+    fn read_words(&self) -> Result<Vec<String>, GrepError> {
         let lector_lineas: Lines<BufReader<&File>> = BufReader::new(&self.file).lines();
 
-        let cadenas = GrepRustico::leer_archivo(lector_lineas)?;
+        let cadenas = GrepRustico::read_file(lector_lineas)?;
 
         Ok(cadenas)
     }
@@ -119,7 +119,7 @@ impl GrepRustico {
     /// Devuelve un vector de cadenas que representan las líneas del archivo.
     ///
     /// Si hay un error al leer el archivo, devuelve un error de tipo `GrepError`.
-    fn leer_archivo(lector_lineas: Lines<BufReader<&File>>) -> Result<Vec<String>, GrepError> {
+    fn read_file(lector_lineas: Lines<BufReader<&File>>) -> Result<Vec<String>, GrepError> {
         let mut cadenas: Vec<String> = Vec::new();
 
         for linea in lector_lineas {
@@ -143,7 +143,7 @@ impl GrepRustico {
     /// Devuelve un vector de cadenas que representan las líneas que coinciden con las expresiones regulares.
     ///
     /// Si hay un error al ejecutar el grep, devuelve un error de tipo `GrepError`.
-    fn filtrar_cadena_y_grep(&mut self, lines: &Vec<String>) -> Result<Vec<String>, GrepError> {
+    fn filetr_and_run(&mut self, lines: &Vec<String>) -> Result<Vec<String>, GrepError> {
         let mut resultado = Vec::new();
 
         for line in lines {

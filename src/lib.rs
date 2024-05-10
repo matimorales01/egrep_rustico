@@ -8,7 +8,7 @@ pub mod grep_rustico;
 
 pub mod regex;
 
-pub mod regex_clase;
+pub mod character_class;
 
 pub mod regex_rep;
 

@@ -11,7 +11,7 @@ use trabajo_practico::{grep_error::GrepError, grep_rustico::GrepRustico};
 ///
 /// Devuelve `Ok(())` si el programa se ejecuta correctamente, de lo contrario devuelve un error de tipo `GrepError`.
 fn egrep(args: Vec<String>) -> Result<(), GrepError> {
-    let mut grep = match GrepRustico::leer_comandos(args) {
+    let mut grep = match GrepRustico::read_commands(args) {
         Ok(grep) => grep,
         Err(e) => return Err(e),
     };

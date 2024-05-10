@@ -100,6 +100,22 @@ impl Anchoring {
             })
             .collect()
     }
+    /// Devuelve el valor de `anchoring_end`.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve `true` si el anclaje al final de la cadena está activado, de lo contrario, devuelve `false`.
+    pub fn get_anchoring_end(&self) -> bool {
+        self.anchoring_end
+    }
+    /// Devuelve el valor de `anchoring_start`.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve `true` si el anclaje al principio de la cadena está activado, de lo contrario, devuelve `false`.
+    pub fn get_anchoring_start(&self) -> bool {
+        self.anchoring_start
+    }
 }
 
 #[cfg(test)]

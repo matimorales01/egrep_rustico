@@ -1,6 +1,6 @@
 use crate::{
-    grep_error::GrepError, regex_clase::RegexClase, regex_rep::RegexRep, regex_step::RegexStep,
-    regex_value::RegexValue,
+    character_class::CharacterClass, grep_error::GrepError, regex_rep::RegexRep,
+    regex_step::RegexStep, regex_value::RegexValue,
 };
 use std::str::Chars;
 
@@ -104,9 +104,9 @@ impl BracketExpression {
         }
 
         let clase = if characters.is_empty() {
-            RegexClase::Custom("".chars().collect(), negated)
+            CharacterClass::Custom("".chars().collect(), negated)
         } else {
-            RegexClase::Custom(characters.chars().collect(), negated)
+            CharacterClass::Custom(characters.chars().collect(), negated)
         };
 
         Ok(RegexValue::Clase(clase))

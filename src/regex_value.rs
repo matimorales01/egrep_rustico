@@ -1,11 +1,11 @@
-use crate::regex_clase::RegexClase;
+use crate::character_class::CharacterClass;
 
 /// Representa un valor en una expresión regular, que puede ser un carácter literal, un comodín o una clase de caracteres.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RegexValue {
     Literal(char),
     Wildcard,
-    Clase(RegexClase),
+    Clase(CharacterClass),
 }
 
 impl RegexValue {
@@ -39,7 +39,7 @@ impl RegexValue {
             }
             RegexValue::Clase(regex_class) => {
                 for (i, c) in text.chars().enumerate() {
-                    if regex_class.validar_caracter(c) {
+                    if regex_class.valid_character(c) {
                         return i + c.len_utf8();
                     }
                 }
@@ -77,7 +77,7 @@ impl RegexValue {
             }
             RegexValue::Clase(clase) => {
                 if let Some(c) = value.chars().next() {
-                    if clase.validar_caracter(c) {
+                    if clase.valid_character(c) {
                         c.len_utf8()
                     } else {
                         0
@@ -111,12 +111,12 @@ mod tests {
 
     #[test]
     fn test_matches_clase() {
-        let clase = RegexClase::Alpha;
+        let clase = CharacterClass::Alpha;
         let value = RegexValue::Clase(clase.clone());
         assert_eq!(value.matches("mati"), 1);
         assert_eq!(value.matches("2001"), 0);
 
-        let clase_custom = RegexClase::Custom(vec!['m', 'a', 't'], false);
+        let clase_custom = CharacterClass::Custom(vec!['m', 'a', 't'], false);
         let value_custom = RegexValue::Clase(clase_custom.clone());
         assert_eq!(value_custom.matches("mat"), 1);
         assert_eq!(value_custom.matches("123"), 0);
@@ -139,12 +139,12 @@ mod tests {
 
     #[test]
     fn test_is_same_clase() {
-        let clase = RegexClase::Alpha;
+        let clase = CharacterClass::Alpha;
         let value = RegexValue::Clase(clase.clone());
         assert_eq!(value.is_same("abc"), 1);
         assert_eq!(value.is_same("123"), 0);
 
-        let clase_custom = RegexClase::Custom(vec!['a', 'b', 'c'], false);
+        let clase_custom = CharacterClass::Custom(vec!['a', 'b', 'c'], false);
         let value_custom = RegexValue::Clase(clase_custom.clone());
         assert_eq!(value_custom.is_same("abc"), 1);
         assert_eq!(value_custom.is_same("123"), 0);

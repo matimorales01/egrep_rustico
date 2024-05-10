@@ -1,16 +1,15 @@
 use std::collections::VecDeque;
 
 use crate::{
-    anchoring::Anchoring, bracket_expression::BracketExpression, evaluated_step::EvaluatedStep,
-    grep_error::GrepError, regex_clase::RegexClase, regex_rep::RegexRep, regex_step::RegexStep,
-    regex_value::RegexValue,
+    anchoring::Anchoring, bracket_expression::BracketExpression, character_class::CharacterClass,
+    evaluated_step::EvaluatedStep, grep_error::GrepError, regex_rep::RegexRep,
+    regex_step::RegexStep, regex_value::RegexValue,
 };
 
 #[derive(Debug, Clone)]
 pub struct Regex {
     steps: Vec<RegexStep>,
-    anchoring_start: bool,
-    anchoring_end: bool,
+
     anchoring: Anchoring,
 }
 
@@ -30,10 +29,6 @@ impl Regex {
         let mut steps: Vec<RegexStep> = vec![];
 
         let mut chars_iter = expression.chars();
-
-        let mut anchoring_start = false;
-
-        let mut anchoring_end = false;
 
         let mut anchoring = Anchoring::new();
 
@@ -58,7 +53,6 @@ impl Regex {
                 }
                 '^' => {
                     if steps.is_empty() {
-                        anchoring_start = true;
                         anchoring.update_anchoring('^');
                     } else {
                         return Err(GrepError::Err);
@@ -67,7 +61,6 @@ impl Regex {
                 }
                 '$' => {
                     if chars_iter.clone().next().is_none() {
-                        anchoring_end = true;
                         anchoring.update_anchoring('$');
                     } else {
                         return Err(GrepError::Err);
@@ -121,7 +114,7 @@ impl Regex {
 
                 '[' => {
                     if chars_iter.clone().next() == Some('[') {
-                        let class_content = RegexClase::read_character_class(&mut chars_iter)?;
+                        let class_content = CharacterClass::read_character_class(&mut chars_iter)?;
                         Some(RegexStep {
                             rep: RegexRep::Exact(1),
                             val: class_content,
@@ -154,12 +147,7 @@ impl Regex {
             }
         }
 
-        Ok(Regex {
-            steps,
-            anchoring_end,
-            anchoring_start,
-            anchoring,
-        })
+        Ok(Regex { steps, anchoring })
     }
     /// Comprueba si una cadena de texto coincide con la expresión regular.
     ///
@@ -183,7 +171,7 @@ impl Regex {
 
         let mut queue = VecDeque::from(self.steps.clone());
         let mut stack: Vec<EvaluatedStep> = Vec::new();
-        if self.anchoring_end {
+        if self.anchoring.get_anchoring_end() {
             if self.anchoring.matches_anchoring(&self.steps, value) {
                 return Ok(true);
             } else {
@@ -195,7 +183,7 @@ impl Regex {
                 RegexRep::Exact(n) => {
                     let mut match_size = 0;
                     for _ in 0..n {
-                        let size = if !self.anchoring_start && index == 0 {
+                        let size = if !self.anchoring.get_anchoring_start() && index == 0 {
                             step.val.matches(&value[index..])
                         } else {
                             step.val.is_same(&value[index..])
@@ -222,7 +210,7 @@ impl Regex {
                 RegexRep::Any => {
                     let mut keep_matching = true;
                     while keep_matching {
-                        let match_size = if !self.anchoring_start && index == 0 {
+                        let match_size = if !self.anchoring.get_anchoring_start() && index == 0 {
                             step.val.matches(&value[index..])
                         } else {
                             step.val.is_same(&value[index..])
@@ -249,7 +237,7 @@ impl Regex {
                             None => usize::MAX,
                         }
                     {
-                        let size = if !self.anchoring_start && index == 0 {
+                        let size = if !self.anchoring.get_anchoring_start() && index == 0 {
                             step.val.matches(&value[index..])
                         } else {
                             step.val.is_same(&value[index..])
@@ -275,7 +263,9 @@ impl Regex {
             }
         }
 
-        if self.anchoring_start && self.anchoring.matches_anchoring(&self.steps, value) {
+        if self.anchoring.get_anchoring_start()
+            && self.anchoring.matches_anchoring(&self.steps, value)
+        {
             return Ok(true);
         }
 
