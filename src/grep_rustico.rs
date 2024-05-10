@@ -5,7 +5,7 @@ use std::{
 
 use crate::{grep_error::GrepError, regex::Regex};
 
-/// Representa un grep simple implementado en Rust.
+/// Representa un grep con un archivo y un vector de expresiones regulares
 #[derive(Debug)]
 pub struct GrepRustico {
     file: File,
