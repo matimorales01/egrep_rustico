@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
-use std::str::Chars;
 
 use crate::{
-    anchoring::Anchoring, evaluated_step::EvaluatedStep, grep_error::GrepError,
-    regex_clase::RegexClase, regex_rep::RegexRep, regex_step::RegexStep, regex_value::RegexValue,
+    anchoring::Anchoring, bracket_expression::BracketExpression, evaluated_step::EvaluatedStep,
+    grep_error::GrepError, regex_clase::RegexClase, regex_rep::RegexRep, regex_step::RegexStep,
+    regex_value::RegexValue,
 };
 
 #[derive(Debug, Clone)]
@@ -15,6 +15,17 @@ pub struct Regex {
 }
 
 impl Regex {
+    /// Crea una nueva instancia de `Regex` a partir de una expresión regular dada.
+    ///
+    /// # Arguments
+    ///
+    /// * `expression` - La expresión regular en forma de cadena de texto.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve `Ok(Regex)` si la creación de la instancia de `Regex` es exitosa.
+    ///
+    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de creación.
     pub fn new(expression: &str) -> Result<Self, GrepError> {
         let mut steps: Vec<RegexStep> = vec![];
 
@@ -65,9 +76,25 @@ impl Regex {
                 }
                 '+' => {
                     if let Some(last) = steps.last_mut() {
-                        last.rep = RegexRep::Range {
-                            min: Some(1),
-                            max: None,
+                        match last.rep {
+                            RegexRep::Exact(n) => {
+                                last.rep = RegexRep::Range {
+                                    min: Some(n),
+                                    max: None,
+                                };
+                            }
+                            RegexRep::Range { min, max } => {
+                                if let Some(mut min_value) = min {
+                                    min_value += 1;
+                                    last.rep = RegexRep::Range {
+                                        min: Some(min_value),
+                                        max,
+                                    };
+                                } else {
+                                    last.rep = RegexRep::Range { min: Some(1), max };
+                                }
+                            }
+                            _ => {}
                         }
                     } else {
                         return Err(GrepError::Err);
@@ -88,57 +115,20 @@ impl Regex {
                 }
 
                 '{' => {
-                    let mut min = String::new();
-                    let mut max = String::new();
-                    let mut mode = 0; // 0 = leyendo mínimo, 1 = leyendo máximo
-
-                    for c in chars_iter.by_ref() {
-                        match c {
-                            '0'..='9' => {
-                                if mode == 0 {
-                                    min.push(c);
-                                } else {
-                                    max.push(c);
-                                }
-                            }
-                            ',' => {
-                                mode = 1;
-                            }
-                            '}' => {
-                                let min = min.parse::<usize>().map_err(|_| GrepError::Err)?;
-                                let max = if max.is_empty() {
-                                    None
-                                } else {
-                                    Some(max.parse::<usize>().map_err(|_| GrepError::Err)?)
-                                };
-                                let rep = RegexRep::Range {
-                                    min: Some(min),
-                                    max,
-                                };
-                                if let Some(last) = steps.last_mut() {
-                                    last.rep = rep;
-                                } else {
-                                    return Err(GrepError::Err);
-                                }
-                                break;
-                            }
-                            _ => return Err(GrepError::Err),
-                        }
-                    }
+                    BracketExpression::read_bracket_expression_c(&mut chars_iter, &mut steps)?;
                     None
                 }
 
                 '[' => {
                     if chars_iter.clone().next() == Some('[') {
-                        // Handle character class
-                        let class_content = Self::read_character_class(&mut chars_iter)?;
+                        let class_content = RegexClase::read_character_class(&mut chars_iter)?;
                         Some(RegexStep {
                             rep: RegexRep::Exact(1),
                             val: class_content,
                         })
                     } else {
-                        // Handle bracket expression
-                        let bracket_content = Self::read_bracket_expression(&mut chars_iter)?;
+                        let bracket_content =
+                            BracketExpression::read_bracket_expression(&mut chars_iter)?;
                         Some(RegexStep {
                             rep: RegexRep::Exact(1),
                             val: bracket_content,
@@ -146,13 +136,16 @@ impl Regex {
                     }
                 }
 
-                '\\' => match chars_iter.next() {
-                    Some(literal) => Some(RegexStep {
-                        rep: RegexRep::Exact(1),
-                        val: RegexValue::Literal(literal),
-                    }),
-                    None => return Err(GrepError::Err),
-                },
+                '\\' => {
+                    if let Some(special_char) = chars_iter.next() {
+                        Some(RegexStep {
+                            rep: RegexRep::Exact(1),
+                            val: RegexValue::Literal(special_char),
+                        })
+                    } else {
+                        return Err(GrepError::Err);
+                    }
+                }
                 _ => return Err(GrepError::Err),
             };
 
@@ -168,7 +161,19 @@ impl Regex {
             anchoring,
         })
     }
-
+    /// Comprueba si una cadena de texto coincide con la expresión regular.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - La cadena de texto a comprobar.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve `Ok(true)` si la cadena de texto coincide con la expresión regular.
+    ///
+    /// Devuelve `Ok(false)` si la cadena de texto no coincide con la expresión regular.
+    ///
+    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de comprobación.
     pub fn test(&self, value: &str) -> Result<bool, GrepError> {
         if !value.is_ascii() {
             return Err(GrepError::Err);
@@ -179,7 +184,7 @@ impl Regex {
         let mut queue = VecDeque::from(self.steps.clone());
         let mut stack: Vec<EvaluatedStep> = Vec::new();
         if self.anchoring_end {
-            if self.anchoring.match_anchor(&self.steps, value) {
+            if self.anchoring.matches_anchoring(&self.steps, value) {
                 return Ok(true);
             } else {
                 return Ok(false);
@@ -234,25 +239,7 @@ impl Regex {
                         }
                     }
                 }
-                RegexRep::OneOrMore => {
-                    let mut match_size = 0;
-                    loop {
-                        let size = step.val.matches(&value[index..]);
-                        if size == 0 {
-                            break;
-                        }
-                        match_size += size;
-                        index += size;
-                    }
-                    if match_size == 0 {
-                        return Ok(false);
-                    }
-                    stack.push(EvaluatedStep {
-                        step: step.clone(),
-                        match_size,
-                        backtrackeable: true,
-                    });
-                }
+
                 RegexRep::Range { min, max } => {
                     let mut count = 0;
                     let mut match_size = 0;
@@ -288,13 +275,23 @@ impl Regex {
             }
         }
 
-        if self.anchoring_start && self.anchoring.match_anchor(&self.steps, value) {
+        if self.anchoring_start && self.anchoring.matches_anchoring(&self.steps, value) {
             return Ok(true);
         }
 
         Ok(true)
     }
-
+    /// Crea múltiples instancias de `Regex` a partir de una expresión regular que puede o no estar separada en subexpressiones si contiene '|'.
+    ///
+    /// # Arguments
+    ///
+    /// * `regular_expression` - La expresión regular completa que puede contener múltiples subexpresiones separadas por '|'.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve `Ok(Vec<Regex>)` si la creación de las instancias de `Regex` es exitosa.
+    ///
+    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de creación.
     pub fn crear_regex(regular_expression: &str) -> Result<Vec<Regex>, GrepError> {
         let mut regex_vec: Vec<Regex> = Vec::new();
 
@@ -306,60 +303,6 @@ impl Regex {
         }
 
         Ok(regex_vec)
-    }
-
-    fn read_character_class(chars_iter: &mut Chars) -> Result<RegexValue, GrepError> {
-        let mut class_content = String::new();
-        for char_in_class in chars_iter.by_ref() {
-            if char_in_class == ']' {
-                class_content.push(char_in_class);
-                break;
-            }
-            class_content.push(char_in_class);
-        }
-
-        // Leer el corchete de cierre ']' adicional
-        if chars_iter.next() != Some(']') {
-            return Err(GrepError::Err);
-        }
-
-        let regex_clase = match class_content.as_str() {
-            "[:alnum:]" => RegexClase::AlNum,
-            "[:alpha:]" => RegexClase::Alpha,
-            "[:digit:]" => RegexClase::Digit,
-            "[:lower:]" => RegexClase::Lower,
-            "[:upper:]" => RegexClase::Upper,
-            "[:space:]" => RegexClase::Space,
-            "[:punct:]" => RegexClase::Punct,
-            _ => {
-                println!("Unrecognized character class: {:?}", class_content);
-                return Err(GrepError::Err);
-            }
-        };
-
-        Ok(RegexValue::Clase(regex_clase))
-    }
-
-    fn read_bracket_expression(chars_iter: &mut Chars) -> Result<RegexValue, GrepError> {
-        let mut characters = String::new();
-        let mut negated = false;
-        // Verificar si el conjunto de caracteres es negado
-        if let Some('^') = chars_iter.clone().next() {
-            chars_iter.next();
-            negated = true;
-        }
-        for inner_c in chars_iter.by_ref() {
-            if inner_c == ']' {
-                break;
-            }
-            characters.push(inner_c);
-        }
-        let clase = if characters.is_empty() {
-            RegexClase::Custom("".chars().collect(), negated)
-        } else {
-            RegexClase::Custom(characters.chars().collect(), negated)
-        };
-        Ok(RegexValue::Clase(clase))
     }
 }
 
@@ -427,7 +370,46 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn test_es_digit() -> Result<(), GrepError> {
+    fn test_match_wildcard() -> Result<(), GrepError> {
+        let value = "mati";
+        let regex = Regex::new("ma.i")?;
+        let matches = regex.test(value)?;
+        assert_eq!(matches, true);
+
+        Ok(())
+    }
+    #[test]
+    fn test_match_wildcards() -> Result<(), GrepError> {
+        let value = "matttkkiiii";
+        let regex = Regex::new("ma........i")?;
+        let matches = regex.test(value)?;
+        assert_eq!(matches, true);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_match_wildcard_false() -> Result<(), GrepError> {
+        let value = "matti";
+        let regex = Regex::new("ma.i")?;
+        let matches = regex.test(value)?;
+        assert_eq!(matches, false);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_match_wildcards_false() -> Result<(), GrepError> {
+        let value = "matii";
+        let regex = Regex::new("ma........i")?;
+        let matches = regex.test(value)?;
+        assert_eq!(matches, false);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_is_digit() -> Result<(), GrepError> {
         let value = "1 es un numero";
         let regex = Regex::new("[[:digit:]]")?;
 
@@ -436,8 +418,9 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
-    fn test_este_o_este() -> Result<(), GrepError> {
+    fn test_rep_question_sign() -> Result<(), GrepError> {
         let value = "apple";
         let regex = Regex::new("a?e")?;
 
@@ -445,8 +428,9 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
-    fn test_este_o_este_false() -> Result<(), GrepError> {
+    fn test_rep_question_sign_false() -> Result<(), GrepError> {
         let value = "bokit";
         let regex = Regex::new("a?e")?;
 
@@ -454,8 +438,9 @@ mod tests {
         assert_eq!(matches, false);
         Ok(())
     }
+
     #[test]
-    fn test_curvy_bracket() -> Result<(), GrepError> {
+    fn test_bracket_expression_c() -> Result<(), GrepError> {
         let value = "maaaaati";
         let regex = Regex::new("ma{5,6}ti")?;
 
@@ -463,8 +448,9 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
-    fn test_curvy_bracket_false() -> Result<(), GrepError> {
+    fn test_bracket_expression_c_false() -> Result<(), GrepError> {
         let value = "mati";
         let regex = Regex::new("ma{5,6}ti")?;
 
@@ -472,8 +458,9 @@ mod tests {
         assert_eq!(matches, false);
         Ok(())
     }
+
     #[test]
-    fn test_bracket() -> Result<(), GrepError> {
+    fn test_bracket_expression() -> Result<(), GrepError> {
         let value = "la a es una vocal";
         let regex = Regex::new("la [aeiou] es una vocal")?;
 
@@ -481,8 +468,19 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
-    fn test_bracket_negada() -> Result<(), GrepError> {
+    fn test_bracket_expression_false() -> Result<(), GrepError> {
+        let value = "la f es una vocal";
+        let regex = Regex::new("la [aeiou] es una vocal")?;
+
+        let matches = regex.test(value)?;
+        assert_eq!(matches, false);
+        Ok(())
+    }
+
+    #[test]
+    fn test_bracket_expression_negated() -> Result<(), GrepError> {
         let value = "la z no es una vocal";
         let regex = Regex::new("la [^aeiou] no es una vocal")?;
 
@@ -490,6 +488,7 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
     fn test_bracket_or() -> Result<(), GrepError> {
         let value = "abd";
@@ -499,6 +498,7 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
     fn test_bracket_or_false() -> Result<(), GrepError> {
         let value = "ald";
@@ -518,6 +518,7 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
     fn test_character_space_false() -> Result<(), GrepError> {
         let value = "holamundo";
@@ -537,6 +538,7 @@ mod tests {
         assert_eq!(matches, true);
         Ok(())
     }
+
     #[test]
     fn test_character_alnum_false() -> Result<(), GrepError> {
         let value = "el caracter $ no es un simbolo";
@@ -546,8 +548,9 @@ mod tests {
         assert_eq!(matches, false);
         Ok(())
     }
+
     #[test]
-    fn test_catedra_1() -> Result<(), GrepError> {
+    fn test_anchoring_start() -> Result<(), GrepError> {
         let value_0 = "start with start";
         let value = "starting";
         let value_1 = "not start with start";
@@ -569,8 +572,36 @@ mod tests {
 
         Ok(())
     }
+
     #[test]
-    fn test_catedra_2() -> Result<(), GrepError> {
+    fn test_anchoring_start_false() -> Result<(), GrepError> {
+        let value = "aguante bokita";
+        let regex = Regex::new("^bokita")?;
+
+        let matches = regex.test(value)?;
+        assert_eq!(matches, false);
+        Ok(())
+    }
+    #[test]
+    fn test_anchoring_end() -> Result<(), GrepError> {
+        let value = "aguante bokita";
+        let regex = Regex::new("bokita$")?;
+
+        let matches = regex.test(value)?;
+        assert_eq!(matches, true);
+        Ok(())
+    }
+    #[test]
+    fn test_anchoring_end_false() -> Result<(), GrepError> {
+        let value = "matiassss";
+        let regex = Regex::new("bokita$")?;
+
+        let matches = regex.test(value)?;
+        assert_eq!(matches, false);
+        Ok(())
+    }
+    #[test]
+    fn test_wildcard_question_sign() -> Result<(), GrepError> {
         let value_0 = "abcd";
         let value = "abcdd";
         let value_1 = "abd";
@@ -590,158 +621,6 @@ mod tests {
         assert_eq!(matches_2, false);
         assert_eq!(matches_3, false);
 
-        Ok(())
-    }
-    #[test]
-    fn test_caracteres_alfabetico() -> Result<(), GrepError> {
-        let regex = Regex::new("matias");
-
-        assert_eq!(regex.unwrap().test("matias")?, true);
-        Ok(())
-    }
-    #[test]
-    fn test_muchos_caracteres_alfabeticos() -> Result<(), GrepError> {
-        let regex = Regex::new("z");
-        let regex1 = Regex::new("ele");
-        let regex2 = Regex::new("e");
-        let regex3 = Regex::new("ue");
-        let regex4 = Regex::new("a");
-        assert_eq!(regex.unwrap().test("ezequiel")?, true);
-        assert_eq!(regex1.unwrap().test("elefante")?, true);
-        assert_eq!(regex2.unwrap().test("el")?, true);
-        assert_eq!(regex3.unwrap().test("aquel")?, true);
-        assert_eq!(regex4.unwrap().test("no")?, false);
-        Ok(())
-    }
-    #[test]
-    fn test_caracteres_alfabetico_no_match() -> Result<(), GrepError> {
-        let regex = Regex::new("cars");
-
-        assert_eq!(regex.unwrap().test("matias")?, false);
-        Ok(())
-    }
-    #[test]
-    fn test_muchos_caracteres_alfabeticos_no_match() -> Result<(), GrepError> {
-        let regex = Regex::new("y");
-        let regex1 = Regex::new("z");
-        let regex2 = Regex::new("aquel");
-        let regex3 = Regex::new("mati");
-        let regex4 = Regex::new("si");
-        assert_eq!(regex.unwrap().test("ezequiel")?, false);
-        assert_eq!(regex1.unwrap().test("elefante")?, false);
-        assert_eq!(regex2.unwrap().test("el")?, false);
-        assert_eq!(regex3.unwrap().test("aquel")?, false);
-        assert_eq!(regex4.unwrap().test("no")?, false);
-        Ok(())
-    }
-
-    #[test]
-    fn test_caracteres_con_punto() -> Result<(), GrepError> {
-        let regex = Regex::new("mati.morales");
-
-        assert_eq!(regex.unwrap().test("matiamorales")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_caracteres_y_varios_puntos() -> Result<(), GrepError> {
-        let regex = Regex::new("mati......s");
-
-        assert_eq!(regex.unwrap().test("matimorales")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_caraceres_y_puntos_falso() -> Result<(), GrepError> {
-        let regex = Regex::new("mat.as");
-
-        assert_eq!(regex.unwrap().test("matas")?, false);
-        Ok(())
-    }
-    #[test]
-    fn test_signo_de_pregunta() -> Result<(), GrepError> {
-        let regex = Regex::new("a?e");
-
-        assert_eq!(regex.unwrap().test("apple")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_simbolo_suma_true() -> Result<(), GrepError> {
-        let regex = Regex::new("matias");
-
-        assert_eq!(regex.unwrap().test("ma+ti")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_bracket_expression_true() -> Result<(), GrepError> {
-        let regex = Regex::new("ma[ti]as");
-        assert_eq!(regex.unwrap().test("matas")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_bracket_expression_false() -> Result<(), GrepError> {
-        let regex = Regex::new("ma[ti]as");
-        assert_eq!(regex.unwrap().test("matias")?, false);
-        Ok(())
-    }
-
-    #[test]
-    fn test_bracket_expression_c_exacta() -> Result<(), GrepError> {
-        let regex = Regex::new("mat{4}i");
-
-        assert_eq!(regex.unwrap().test("jmatttti")?, true);
-        Ok(())
-    }
-    #[test]
-    fn test_bracket_expression_c_falso() -> Result<(), GrepError> {
-        let regex = Regex::new("ma{5,6}ti");
-
-        assert_eq!(regex.unwrap().test("maaaati")?, false);
-        Ok(())
-    }
-
-    #[test]
-    fn test_es_digit2() -> Result<(), GrepError> {
-        let regex = Regex::new("[[:digit:]] es un numero");
-
-        assert_eq!(regex.unwrap().test("9 es un numero")?, true);
-        Ok(())
-    }
-    #[test]
-    fn test_no_es_digit() -> Result<(), GrepError> {
-        let regex = Regex::new("[[:digit:]] es un numero");
-
-        assert_eq!(regex.unwrap().test("a es un numero")?, false);
-        Ok(())
-    }
-
-    #[test]
-    fn test_es_letra() -> Result<(), GrepError> {
-        let regex = Regex::new("[[:alpha:]] es una letra");
-        assert_eq!(regex.unwrap().test("e es una letra")?, true);
-        Ok(())
-    }
-    #[test]
-    fn test_no_es_letra() -> Result<(), GrepError> {
-        let regex = Regex::new("[[:alpha:]] es una letra");
-        assert_eq!(regex.unwrap().test("4 es una letra")?, false);
-        Ok(())
-    }
-    #[test]
-    fn test_punto_asterisco() -> Result<(), GrepError> {
-        let regex = Regex::new("ab.*cd");
-
-        assert_eq!(regex.unwrap().test("abholajajajajacd")?, true);
-        Ok(())
-    }
-
-    #[test]
-    fn test_signo_pesos() -> Result<(), GrepError> {
-        let regex = Regex::new("abc$");
-        assert_eq!(regex.unwrap().test("matiabc")?, true);
         Ok(())
     }
 }

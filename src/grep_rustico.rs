@@ -5,6 +5,7 @@ use std::{
 
 use crate::{grep_error::GrepError, regex::Regex};
 
+/// Representa un grep simple implementado en Rust.
 #[derive(Debug)]
 pub struct GrepRustico {
     file: File,
@@ -12,9 +13,17 @@ pub struct GrepRustico {
 }
 
 impl GrepRustico {
-    ///Se reciben los argumentos pasados por linea de comandos: cargo run -regularexpression- nombrearchivo
-    /// se chequea que esten todos los necesarios, y ya con los argumentos obtenidos se llama a abrir archivo
-    /// ante cualquier error se retorna error, de lo contrario se devuelve la estructura GrepRustico
+    /// Lee los argumentos pasados por línea de comandos para inicializar un `GrepRustico`.
+    ///
+    /// # Arguments
+    ///
+    /// * `args` - Un vector de cadenas que representa los argumentos de la línea de comandos.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un `GrepRustico` inicializado si los argumentos son válidos y no hay errores.
+    ///
+    /// Si hay un error en los argumentos o al abrir el archivo, devuelve un error de tipo `GrepError`.
     pub fn leer_comandos(args: Vec<String>) -> Result<GrepRustico, GrepError> {
         if args.len() != 3 {
             return Err(GrepError::Err);
@@ -28,9 +37,14 @@ impl GrepRustico {
 
         Ok(GrepRustico { file, regex_vec })
     }
-    ///Se corren todos los procedimientos para la lectura del archivo, el cual se tiene en formato de vector, y se va
-    /// leyendo palabra por palabra, para ir matcheando, y ante una palabra matcheada, se printea.
-    /// ante cualquier error se retorna GrepError
+
+    /// Ejecuta el grep en el archivo y devuelve un vector de las líneas que coinciden con las expresiones regulares.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un vector de cadenas que representan las líneas que coinciden con las expresiones regulares.
+    ///
+    /// Si hay un error al leer el archivo o al ejecutar el grep, devuelve un error de tipo `GrepError`.
     pub fn run(&mut self) -> Result<Vec<String>, GrepError> {
         let mut matches = Vec::new();
         let cadena: Vec<String> = match self.leer_palabras() {
@@ -50,22 +64,42 @@ impl GrepRustico {
         self.imprimir_matches(&matches);
         Ok(matches)
     }
-
-    ///Funcion auxiliar para imprimir los strings que seran las palabras matcheadas
+    /// Imprime las líneas que coinciden con las expresiones regulares.
+    ///
+    /// # Arguments
+    ///
+    /// * `matches` - Un vector de cadenas que representan las líneas que coinciden con las expresiones regulares.
     fn imprimir_matches(&self, matches: &Vec<String>) {
         for linea in matches {
             println!("{}", linea);
         }
     }
-    ///Funcion auxiliar para realizar la apertura del archivo, ante un error devuelve GrepError    
+
+    /// Abre un archivo dado su nombre.
+    ///
+    /// # Arguments
+    ///
+    /// * `nombre_archivo` - El nombre del archivo que se va a abrir.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un objeto `File` si el archivo se abre con éxito.
+    ///
+    /// Si hay un error al abrir el archivo, devuelve un error de tipo `GrepError`.
     fn abrir_archivo(nombre_archivo: &str) -> Result<File, GrepError> {
         match File::open(nombre_archivo) {
             Ok(file) => Ok(file),
             Err(_) => Err(GrepError::ErrArchivo),
         }
     }
-    ///Funcion auxiliar para leer cada linea del archivo de manera eficiente. Devuelve un vector de cadenas de string
-    /// o en caso de error un GrepError
+
+    /// Lee todas las palabras del archivo y las devuelve como un vector de cadenas.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un vector de cadenas que representan todas las palabras del archivo.
+    ///
+    /// Si hay un error al leer el archivo, devuelve un error de tipo `GrepError`.
     fn leer_palabras(&self) -> Result<Vec<String>, GrepError> {
         let lector_lineas: Lines<BufReader<&File>> = BufReader::new(&self.file).lines();
 
@@ -74,7 +108,17 @@ impl GrepRustico {
         Ok(cadenas)
     }
 
-    ///Funcion auxiliar para armar un vector de cadenas de string. Devuelve GrepError en caso de error
+    /// Lee un archivo línea por línea y lo convierte en un vector de cadenas.
+    ///
+    /// # Arguments
+    ///
+    /// * `lector_lineas` - Un iterador sobre las líneas del archivo.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un vector de cadenas que representan las líneas del archivo.
+    ///
+    /// Si hay un error al leer el archivo, devuelve un error de tipo `GrepError`.
     fn leer_archivo(lector_lineas: Lines<BufReader<&File>>) -> Result<Vec<String>, GrepError> {
         let mut cadenas: Vec<String> = Vec::new();
 
@@ -87,8 +131,18 @@ impl GrepRustico {
 
         Ok(cadenas)
     }
-    ///Se filtra palabra por palabra, se chequea que sea ascii, y se corre el procedimiento del grep en cada regex.
-    /// En caso de error devuelve GrepError. Caso contrario un vector de resultados
+
+    /// Filtra cada línea y ejecuta el grep para cada expresión regular.
+    ///
+    /// # Arguments
+    ///
+    /// * `lines` - Un vector de cadenas que representan las líneas del archivo.
+    ///
+    /// # Returns
+    ///
+    /// Devuelve un vector de cadenas que representan las líneas que coinciden con las expresiones regulares.
+    ///
+    /// Si hay un error al ejecutar el grep, devuelve un error de tipo `GrepError`.
     fn filtrar_cadena_y_grep(&mut self, lines: &Vec<String>) -> Result<Vec<String>, GrepError> {
         let mut resultado = Vec::new();
 

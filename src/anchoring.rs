@@ -49,7 +49,7 @@ impl Anchoring {
     /// # Returns
     ///
     /// `true` si la cadena coincide con el patrón con respecto a los anclajes, de lo contrario `false`.
-    pub fn match_anchor(&self, steps: &[RegexStep], value: &str) -> bool {
+    pub fn matches_anchoring(&self, steps: &[RegexStep], value: &str) -> bool {
         match (self.anchoring_start, self.anchoring_end) {
             (true, false) => {
                 if !steps.is_empty() {
@@ -67,6 +67,13 @@ impl Anchoring {
                 if !steps.is_empty() {
                     let pattern = Self::steps_to_string(steps);
                     return value.ends_with(&pattern);
+                }
+                false
+            }
+            (true, true) => {
+                if !steps.is_empty() {
+                    let pattern = Self::steps_to_string(steps);
+                    return value.starts_with(&pattern) && value.ends_with(&pattern);
                 }
                 false
             }
@@ -92,5 +99,215 @@ impl Anchoring {
                 RegexValue::Clase(_) => "".to_string(),
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::regex_rep::RegexRep;
+    #[test]
+    fn test_update_anchoring_start() {
+        let mut anchoring = Anchoring::new();
+        anchoring.update_anchoring('^');
+        assert_eq!(anchoring.anchoring_start, true);
+        assert_eq!(anchoring.anchoring_end, false);
+    }
+
+    #[test]
+    fn test_update_anchoring_end() {
+        let mut anchoring = Anchoring::new();
+        anchoring.update_anchoring('$');
+        assert_eq!(anchoring.anchoring_start, false);
+        assert_eq!(anchoring.anchoring_end, true);
+    }
+
+    #[test]
+    fn test_match_anchoring_start() {
+        let anchoring = Anchoring {
+            anchoring_start: true,
+            anchoring_end: false,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "mati"), true);
+    }
+
+    #[test]
+    fn test_match_anchoring_start_false() {
+        let anchoring = Anchoring {
+            anchoring_start: true,
+            anchoring_end: false,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "jhonatan"), false);
+    }
+
+    #[test]
+    fn test_match_anchoring_end() {
+        let anchoring = Anchoring {
+            anchoring_start: false,
+            anchoring_end: true,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "mati"), true);
+    }
+
+    #[test]
+    fn test_match_anchoring_end_false() {
+        let anchoring = Anchoring {
+            anchoring_start: false,
+            anchoring_end: true,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "jhonatan"), false);
+    }
+
+    #[test]
+    fn test_match_anchoring_both() {
+        let anchoring = Anchoring {
+            anchoring_start: true,
+            anchoring_end: true,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "mati"), true);
+    }
+
+    #[test]
+    fn test_match_anchoring_both_false() {
+        let anchoring = Anchoring {
+            anchoring_start: true,
+            anchoring_end: true,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "jhonatan"), false);
+    }
+
+    #[test]
+    fn test_match_anchoring_none() {
+        let anchoring = Anchoring {
+            anchoring_start: false,
+            anchoring_end: false,
+        };
+        let steps = vec![
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('m'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('a'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('t'),
+            },
+            RegexStep {
+                rep: RegexRep::Exact(1),
+                val: RegexValue::Literal('i'),
+            },
+        ];
+        assert_eq!(anchoring.matches_anchoring(&steps, "mati"), false);
     }
 }

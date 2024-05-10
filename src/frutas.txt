@@ -6,3 +6,15 @@ melon
 watermelon
 7 es un numero
 8
+abc?def
+123*456
+789+10
+start middle end
+start with start
+end with end
+only this line
+abcd
+abcdd
+nabd
+hola abcd chau
+abhhd
