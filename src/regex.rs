@@ -9,30 +9,17 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Regex {
     steps: Vec<RegexStep>,
-
     anchoring: Anchoring,
 }
 
 impl Regex {
-    /// Crea una nueva instancia de `Regex` a partir de una expresión regular dada.
-    ///
-    /// # Arguments
-    ///
-    /// * `expression` - La expresión regular en forma de cadena de texto.
-    ///
-    /// # Returns
-    ///
-    /// Devuelve `Ok(Regex)` si la creación de la instancia de `Regex` es exitosa.
-    ///
-    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de creación.
     pub fn new(expression: &str) -> Result<Self, GrepError> {
         let mut steps: Vec<RegexStep> = vec![];
-
         let mut chars_iter = expression.chars();
-
         let mut anchoring = Anchoring::new();
 
         while let Some(c) = chars_iter.next() {
+            println!("Procesando carácter: {}", c);
             let step = match c {
                 '.' => Some(RegexStep {
                     rep: RegexRep::Exact(1),
@@ -44,11 +31,11 @@ impl Regex {
                 }),
                 '*' => {
                     if let Some(last) = steps.last_mut() {
+                        println!("Encontrado '*', modificando el último paso: {:?}", last);
                         last.rep = RegexRep::Any;
                     } else {
                         return Err(GrepError::Err);
                     }
-
                     None
                 }
                 '^' => {
@@ -69,6 +56,7 @@ impl Regex {
                 }
                 '+' => {
                     if let Some(last) = steps.last_mut() {
+                        println!("Encontrado '+', modificando el último paso: {:?}", last);
                         match last.rep {
                             RegexRep::Exact(n) => {
                                 last.rep = RegexRep::Range {
@@ -94,9 +82,9 @@ impl Regex {
                     }
                     None
                 }
-
                 '?' => {
                     if let Some(last) = steps.last_mut() {
+                        println!("Encontrado '?', modificando el último paso: {:?}", last);
                         last.rep = RegexRep::Range {
                             min: Some(0),
                             max: Some(1),
@@ -106,13 +94,13 @@ impl Regex {
                     }
                     None
                 }
-
                 '{' => {
+                    println!("Procesando  con BracketExpression::read_bracket_expression_c");
                     BracketExpression::read_bracket_expression_c(&mut chars_iter, &mut steps)?;
                     None
                 }
-
                 '[' => {
+                    println!("Procesando '['");
                     if chars_iter.clone().next() == Some('[') {
                         let class_content = CharacterClass::read_character_class(&mut chars_iter)?;
                         Some(RegexStep {
@@ -128,7 +116,6 @@ impl Regex {
                         })
                     }
                 }
-
                 '\\' => {
                     if let Some(special_char) = chars_iter.next() {
                         Some(RegexStep {
@@ -147,30 +134,18 @@ impl Regex {
             }
         }
 
+        println!("Creación de Regex completada con steps: {:?} y anchoring: {:?}", steps, anchoring);
         Ok(Regex { steps, anchoring })
     }
-    /// Comprueba si una cadena de texto coincide con la expresión regular.
-    ///
-    /// # Arguments
-    ///
-    /// * `value` - La cadena de texto a comprobar.
-    ///
-    /// # Returns
-    ///
-    /// Devuelve `Ok(true)` si la cadena de texto coincide con la expresión regular.
-    ///
-    /// Devuelve `Ok(false)` si la cadena de texto no coincide con la expresión regular.
-    ///
-    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de comprobación.
+
     pub fn test(&self, value: &str) -> Result<bool, GrepError> {
         if !value.is_ascii() {
             return Err(GrepError::Err);
         }
-
+    
         let mut index = 0;
-
-        let mut queue = VecDeque::from(self.steps.clone());
-        let mut stack: Vec<EvaluatedStep> = Vec::new();
+        let  queue = VecDeque::from(self.steps.clone());
+    
         if self.anchoring.get_anchoring_end() {
             if self.anchoring.matches_anchoring(&self.steps, value) {
                 return Ok(true);
@@ -178,120 +153,124 @@ impl Regex {
                 return Ok(false);
             }
         }
-        'steps: while let Some(step) = queue.pop_front() {
-            match step.rep {
-                RegexRep::Exact(n) => {
-                    let mut match_size = 0;
-                    for _ in 0..n {
-                        let size = if !self.anchoring.get_anchoring_start() && index == 0 {
-                            step.val.matches(&value[index..])
-                        } else {
-                            step.val.is_same(&value[index..])
-                        };
-                        if size == 0 {
-                            match EvaluatedStep::backtrack(step.clone(), &mut stack, &mut queue) {
-                                Some(size) => {
-                                    index -= size;
-                                    continue 'steps;
-                                }
-                                None => return Ok(false),
-                            }
-                        } else {
-                            match_size += size;
-                            index += size;
-                        }
-                    }
-                    stack.push(EvaluatedStep {
-                        step: step.clone(),
-                        match_size,
-                        backtrackeable: false,
-                    });
-                }
-                RegexRep::Any => {
-                    let mut keep_matching = true;
-                    while keep_matching {
-                        let match_size = if !self.anchoring.get_anchoring_start() && index == 0 {
-                            step.val.matches(&value[index..])
-                        } else {
-                            step.val.is_same(&value[index..])
-                        };
-                        if match_size != 0 {
-                            index += match_size;
-                            stack.push(EvaluatedStep {
-                                step: step.clone(),
-                                match_size,
-                                backtrackeable: true,
-                            });
-                        } else {
-                            keep_matching = false;
-                        }
-                    }
-                }
-
-                RegexRep::Range { min, max } => {
-                    let mut count = 0;
-                    let mut match_size = 0;
-                    while count
-                        < match max {
-                            Some(value) => value,
-                            None => usize::MAX,
-                        }
-                    {
-                        let size = if !self.anchoring.get_anchoring_start() && index == 0 {
-                            step.val.matches(&value[index..])
-                        } else {
-                            step.val.is_same(&value[index..])
-                        };
-                        if size == 0 {
-                            break;
-                        }
-                        index += size;
-                        count += 1;
-                        match_size += size;
-                    }
-                    if let Some(min_value) = min {
-                        if count < min_value {
-                            return Ok(false);
-                        }
-                    }
-                    stack.push(EvaluatedStep {
-                        step: step.clone(),
-                        match_size,
-                        backtrackeable: true,
-                    });
-                }
+        if self.anchoring.get_anchoring_start(){
+            if self.anchoring.matches_anchoring(&self.steps, value) {
+                return Ok(true);
+            } else {
+                return Ok(false);
             }
         }
-
-        if self.anchoring.get_anchoring_start()
-            && self.anchoring.matches_anchoring(&self.steps, value)
-        {
-            return Ok(true);
+    
+        while index < value.len() {
+            let mut local_index = index;
+            let mut local_queue = queue.clone();
+            let mut local_stack = Vec::new();
+    
+            'steps: while let Some(step) = local_queue.pop_front() {
+                match step.rep {
+                    RegexRep::Exact(n) => {
+                        let mut match_size = 0;
+                        for _ in 0..n {
+                            let size = if local_index == 0 && !self.anchoring.get_anchoring_start() {
+                                step.val.matches(&value[local_index..])
+                            } else {
+                                step.val.is_same(&value[local_index..])
+                            };
+                            if size == 0 {
+                                match EvaluatedStep::backtrack(step.clone(), &mut local_stack, &mut local_queue) {
+                                    Some(size) => {
+                                        local_index -= size;
+                                        continue 'steps;
+                                    }
+                                    None => break 'steps,
+                                }
+                            } else {
+                                match_size += size;
+                                local_index += size;
+                            }
+                        }
+                        local_stack.push(EvaluatedStep {
+                            step: step.clone(),
+                            match_size,
+                            backtrackeable: false,
+                        });
+                    }
+                    RegexRep::Any => {
+                        let mut keep_matching = true;
+                        while keep_matching {
+                            let match_size = if local_index == 0 && !self.anchoring.get_anchoring_start() {
+                                step.val.matches(&value[local_index..])
+                            } else {
+                                step.val.is_same(&value[local_index..])
+                            };
+                            if match_size != 0 {
+                                local_index += match_size;
+                                local_stack.push(EvaluatedStep {
+                                    step: step.clone(),
+                                    match_size,
+                                    backtrackeable: true,
+                                });
+                            } else {
+                                keep_matching = false;
+                            }
+                        }
+                    }
+                    RegexRep::Range { min, max } => {
+                        let mut count = 0;
+                        let mut match_size = 0;
+                        while count < match max {
+                            Some(value) => value,
+                            None => usize::MAX,
+                        } {
+                            let size = if local_index == 0 && !self.anchoring.get_anchoring_start() {
+                                step.val.matches(&value[local_index..])
+                            } else {
+                                step.val.is_same(&value[local_index..])
+                            };
+                            if size == 0 {
+                                break;
+                            }
+                            local_index += size;
+                            count += 1;
+                            match_size += size;
+                        }
+                        if let Some(min_value) = min {
+                            if count < min_value {
+                                break 'steps;
+                            }
+                        }
+                        local_stack.push(EvaluatedStep {
+                            step: step.clone(),
+                            match_size,
+                            backtrackeable: true,
+                        });
+                    }
+                }
+            }
+    
+            if local_queue.is_empty() {
+                return Ok(true);
+            }
+    
+            index += 1;
         }
-
-        Ok(true)
+    
+        Ok(false)
     }
-    /// Crea múltiples instancias de `Regex` a partir de una expresión regular que puede o no estar separada en subexpressiones si contiene '|'.
-    ///
-    /// # Arguments
-    ///
-    /// * `regular_expression` - La expresión regular completa que puede contener múltiples subexpresiones separadas por '|'.
-    ///
-    /// # Returns
-    ///
-    /// Devuelve `Ok(Vec<Regex>)` si la creación de las instancias de `Regex` es exitosa.
-    ///
-    /// Devuelve `Err(GrepError)` si ocurre algún error durante el proceso de creación.
+    
+
     pub fn crear_regex(regular_expression: &str) -> Result<Vec<Regex>, GrepError> {
         let mut regex_vec: Vec<Regex> = Vec::new();
 
         for subexpression in regular_expression.split('|') {
             if !subexpression.is_empty() {
+                println!("Creando Regex para subexpresión: {}", subexpression);
                 let regex = Regex::new(subexpression)?;
                 regex_vec.push(regex);
             }
         }
 
+        println!("Regex creados: {:?}", regex_vec);
         Ok(regex_vec)
     }
 }
@@ -590,27 +569,214 @@ mod tests {
         assert_eq!(matches, false);
         Ok(())
     }
+   
     #[test]
-    fn test_wildcard_question_sign() -> Result<(), GrepError> {
-        let value_0 = "abcd";
-        let value = "abcdd";
-        let value_1 = "abd";
-        let value_2 = "hola abcd chau";
-        let value_3 = "abhhd";
-        let regex = Regex::new("ab.?d")?;
+fn test_catedra_uno() -> Result<(), GrepError> {
+    let value_0 = "abcd";
+    let value = "abcdd";
+    let value_1 = "abccd";
+    let value_2 = "hola abcd chau";
+    let regex = Regex::new("ab.d")?;
 
-        let matches = regex.clone().test(value)?;
+    let matches = regex.clone().test(value)?;
+    let matches_0 = regex.clone().test(value_0)?;
+    let matches_1 = regex.clone().test(value_1)?;
+    let matches_2 = regex.clone().test(value_2)?;
+
+    assert_eq!(matches, true);
+    assert_eq!(matches_0, true);
+    assert_eq!(matches_1, false);
+    assert_eq!(matches_2, true);
+
+    Ok(())
+}
+#[test]
+fn test_catedra_dos() -> Result<(), GrepError> {
+    let value_0 = "absalolngopsgdehejsd";
+    let value = "abcdd";
+    let value_1 = "abd";
+    let value_2 = "que tul abuelita dime tu";
+    let value_3 = "hola abcd chau";
+    let value_4 = "te vamos a bochar";
+
+    let regex = Regex::new("ab.*d")?;
+
+    let matches = regex.clone().test(value)?;
+    let matches_0 = regex.clone().test(value_0)?;
+    let matches_1 = regex.clone().test(value_1)?;
+    let matches_2 = regex.clone().test(value_2)?;
+    let matches_3 = regex.clone().test(value_3)?;
+    let matches_4 = regex.clone().test(value_4)?;
+
+
+
+    assert_eq!(matches, true);
+    assert_eq!(matches_0, true);
+    assert_eq!(matches_1, true);
+    assert_eq!(matches_2, true);
+    assert_eq!(matches_3, true);
+    assert_eq!(matches_4, false);
+
+
+
+    Ok(())
+}
+#[test]
+fn test_catedra_tres() -> Result<(), GrepError> {
+    let value_0 = "abcd";
+    let value = "abcccd";
+    let value_1 = "hola abcccd chau";
+
+
+    let regex = Regex::new("abc{3}d")?;
+
+    let matches = regex.clone().test(value)?;
+    let matches_0 = regex.clone().test(value_0)?;
+    let matches_1 = regex.clone().test(value_1)?;
+
+    assert_eq!(matches_0, false);
+    assert_eq!(matches, true);
+    assert_eq!(matches_1, true);
+
+
+
+
+    Ok(())
+}
+#[test]
+fn test_catedra_cuatro() -> Result<(), GrepError> {
+    let value_0 = "abcd abcd";
+    let value = "abd abcccd abd";
+    let value_1 = "abcccccccd abcd";
+    let value_2 = "en medio abccd abd fin";
+
+
+    let regex = Regex::new("abc{2,5}d abc{0,}d")?;
+
+    let matches = regex.clone().test(value)?;
+    let matches_0 = regex.clone().test(value_0)?;
+    let matches_1 = regex.clone().test(value_1)?;
+    let matches_2 = regex.clone().test(value_2)?;
+
+    assert_eq!(matches, true);
+    assert_eq!(matches_0, false);
+    assert_eq!(matches_1, false);
+    assert_eq!(matches_2, true);
+
+
+
+    Ok(())
+}
+#[test]
+fn test_catedra_cinco() -> Result<(), GrepError> {
+    let value_0 = "abd";
+    let value = "abc";
+    let value_1 = "agd";
+    let value_2 = "cami figura abd";
+    
+    let regex = Regex::new("a[bc]d")?;
+    let matches_0 = regex.clone().test(value_0)?;
+    let matches = regex.clone().test(value)?;
+    let matches_1 = regex.clone().test(value_1)?;
+    let matches_2 = regex.clone().test(value_2)?;
+
+    assert_eq!(matches_0, true);
+    assert_eq!(matches, false);
+    assert_eq!(matches_1, false);
+    assert_eq!(matches_2, true);
+    Ok(())
+    }
+    #[test]
+    fn test_catedra_seis() -> Result<(), GrepError> {
+        let value_0 = "abcd";
+        let value = "abd";
+        let value_1 = "abcccd";
+        let value_2 = "hola abcd chau";
+
+        
+        let regex = Regex::new("abc+d")?;
         let matches_0 = regex.clone().test(value_0)?;
+        let matches = regex.clone().test(value)?;
         let matches_1 = regex.clone().test(value_1)?;
         let matches_2 = regex.clone().test(value_2)?;
-        let matches_3 = regex.clone().test(value_3)?;
-
-        assert_eq!(matches, true);
+    
         assert_eq!(matches_0, true);
+        assert_eq!(matches, false);
         assert_eq!(matches_1, true);
-        assert_eq!(matches_2, false);
-        assert_eq!(matches_3, false);
-
+        assert_eq!(matches_2, true);
         Ok(())
+        }
+        #[test]
+        fn test_catedra_siete() -> Result<(), GrepError> {
+            let value_0 = "abcd";
+            let value = "abcdd";
+            let value_1 = "abd";
+            let value_2 = "hola abcd chau";
+            let value_3 = "abhhd";
+            let regex = Regex::new("ab.?d")?;
+    
+            let matches = regex.clone().test(value)?;
+            let matches_0 = regex.clone().test(value_0)?;
+            let matches_1 = regex.clone().test(value_1)?;
+            let matches_2 = regex.clone().test(value_2)?;
+            let matches_3 = regex.clone().test(value_3)?;
+    
+            assert_eq!(matches, true);
+            assert_eq!(matches_0, true);
+            assert_eq!(matches_1, true);
+            assert_eq!(matches_2, true);
+            assert_eq!(matches_3, false);
+    
+            Ok(())
+        }
+        #[test]
+fn test_apple_or_melon() -> Result<(), GrepError> {
+    let input = "banana\napple\norange\npineapple\nsoy melon\nen el medio watermelon va";
+    let regexes = Regex::crear_regex("apple|melon")?;
+    let mut expected_output = String::new();
+
+    for regex in regexes {
+        let mut matched_lines = String::new();
+        for line in input.lines() {
+            if regex.test(line)? {
+                matched_lines.push_str(line);
+                matched_lines.push('\n');
+            }
+        }
+        expected_output.push_str(&matched_lines);
     }
+
+    let output = "apple\npineapple\nsoy melon\nen el medio watermelon va\n";
+
+    assert_eq!(expected_output, output);
+
+    Ok(())
 }
+#[test]
+fn test_complex_regex() -> Result<(), GrepError> {
+    let input = "abc?def\n123*456\n789+10\nhola?\nesta no tiene que estar\nesta tampoco";
+    let regexes = Regex::crear_regex("abc\\?def|123\\*456|789\\+10")?;
+    let mut expected_output = String::new();
+
+    for regex in regexes {
+        let mut matched_lines = String::new();
+        for line in input.lines() {
+            if regex.test(line)? {
+                matched_lines.push_str(line);
+                matched_lines.push('\n');
+            }
+        }
+        expected_output.push_str(&matched_lines);
+    }
+
+    let output = "abc?def\n123*456\n789+10\n";
+
+    assert_eq!(expected_output, output);
+
+    Ok(())
+}
+
+
+}
+
+
