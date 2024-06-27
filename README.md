@@ -1,7 +1,7 @@
 # egrep_rustico
 
 ## Descripción
-`egrep_rustico` es una herramienta de búsqueda de patrones inspirada en `egrep`, implementada en Rust de manera simplificada.
+`egrep_rustico` es una herramienta de búsqueda de patrones inspirada en `egrep`, la herramienta de linux, implementada en Rust de manera simplificada.
 
 ## Requisitos
 Asegúrate de tener instalado Rust y Cargo en tu sistema. Puedes descargarlos desde [rust-lang.org](https://www.rust-lang.org/tools/install).
