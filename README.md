@@ -15,3 +15,12 @@ Para utilizar `egrep_rustico`, sigue estos pasos:
 
 3. Ejecuta el siguiente comando para realizar una búsqueda de patrón en un archivo:
 
+##Ejecucion
+
+```bash
+cargo run "regex" archivo.txt
+```
+
+Sustituye `"regex"` por el patrón que deseas buscar y `archivo.txt` por el nombre del archivo en el que quieres realizar la búsqueda.
+
+
